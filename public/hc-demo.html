@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demo HC-DA / HC-DBO</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      height: 440px;
+      min-height: 440px;
+      display: grid;
+      grid-template-columns: 154px 1fr;
+      gap: 8px;
+      padding: 8px;
+      background: linear-gradient(135deg, #f8fafc, #eef6ff);
+      overflow: hidden;
+    }
+    aside {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .controls {
+      background: white;
+      border: 1px solid #dbe4ef;
+      border-radius: 12px;
+      padding: 7px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+    }
+    .control { margin-bottom: 5px; }
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    input[type="range"] { width: 100%; }
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 11px;
+      background: #e2e8f0;
+      color: #334155;
+    }
+    button:hover { filter: brightness(.97); }
+    button.primary { background: #2563eb; color: white; }
+    button.secondary { background: #7c3aed; color: white; }
+    button.compare { grid-column: 1 / -1; background: #0f766e; color: white; }
+    main { min-width: 0; height: 424px; display: grid; grid-template-rows: 1fr 92px; gap: 6px; }
+    .visuals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .card {
+      position: relative;
+      min-width: 0;
+      background: white;
+      border: 1px solid #dbe4ef;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+    }
+    .card-title {
+      position: absolute;
+      z-index: 2;
+      top: 8px;
+      left: 10px;
+      right: 10px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    #benchmarkCanvas { height: 92px; }
+    #status {
+      min-height: 48px;
+      max-height: 78px;
+      overflow: hidden;
+      font-size: 10px;
+      line-height: 1.35;
+      background: white;
+      border: 1px solid #dbe4ef;
+      border-radius: 10px;
+      padding: 8px;
+    }
+    .legend { display: flex; gap: 12px; font-size: 11px; padding: 0 2px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="controls">
+      <div class="control">
+        <label><span>Populasi</span><span id="popValue">20</span></label>
+        <input id="population" type="range" min="5" max="50" value="20" />
+      </div>
+      <div class="control">
+        <label><span>Iterasi</span><span id="iterValue">60</span></label>
+        <input id="iterations" type="range" min="20" max="200" value="60" step="10" />
+      </div>
+      <div class="control">
+        <label><span>HC step</span><span id="stepValue">0.05</span></label>
+        <input id="step" type="range" min="0.01" max="0.30" value="0.05" step="0.01" />
+      </div>
+      <div class="control">
+        <label><span>HC interval</span><span id="intervalValue">5</span></label>
+        <input id="interval" type="range" min="1" max="20" value="5" />
+      </div>
+      <div class="buttons">
+        <button id="runDA" class="primary">HC-DA</button>
+        <button id="runDBO" class="secondary">HC-DBO</button>
+        <button id="compare" class="compare">Bandingkan Semua</button>
+      </div>
+    </div>
+    <div id="status">Siap. Pilih algoritma untuk menjalankan simulasi.</div>
+    <div class="legend">
+      <span><i class="dot" style="background:#2563eb"></i> Normal</span>
+      <span><i class="dot" style="background:#f59e0b"></i> Setelah HC</span>
+      <span><i class="dot" style="background:#10b981"></i> Terbaik</span>
+    </div>
+  </aside>
+
+  <main>
+    <div class="visuals">
+      <div class="card">
+        <div class="card-title"><span>Tanpa Hill-Climbing</span><span id="baseFitness">-</span></div>
+        <canvas id="baseCanvas" width="440" height="300"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title"><span>Dengan Hill-Climbing</span><span id="hybridFitness">-</span></div>
+        <canvas id="hybridCanvas" width="440" height="300"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <canvas id="benchmarkCanvas" width="900" height="150"></canvas>
+    </div>
+  </main>
+
+  <script>
+    const BOUNDS = 5.12;
+    const baseCanvas = document.getElementById('baseCanvas');
+    const hybridCanvas = document.getElementById('hybridCanvas');
+    const benchmarkCanvas = document.getElementById('benchmarkCanvas');
+    const statusEl = document.getElementById('status');
+
+    const controls = {
+      population: document.getElementById('population'),
+      iterations: document.getElementById('iterations'),
+      step: document.getElementById('step'),
+      interval: document.getElementById('interval')
+    };
+
+    ['population', 'iterations', 'step', 'interval'].forEach(name => {
+      const input = controls[name];
+      input.addEventListener('input', () => {
+        document.getElementById(name + 'Value').textContent =
+          name === 'step' ? Number(input.value).toFixed(2) : input.value;
+      });
+    });
+
+    function seededRandom(seed) {
+      let value = seed >>> 0;
+      return () => {
+        value = (value * 1664525 + 1013904223) >>> 0;
+        return value / 4294967296;
+      };
+    }
+
+    function rastrigin(x) {
+      return 20 + x[0] * x[0] - 10 * Math.cos(2 * Math.PI * x[0])
+               + x[1] * x[1] - 10 * Math.cos(2 * Math.PI * x[1]);
+    }
+
+    function randomPoint(random) {
+      return [
+        (random() * 2 - 1) * BOUNDS,
+        (random() * 2 - 1) * BOUNDS
+      ];
+    }
+
+    function copyPopulation(population) {
+      return population.map(p => ({ point: [...p.point], velocity: [...(p.velocity || [0, 0])], best: [...(p.best || p.point)], stagnation: p.stagnation || 0 }));
+    }
+
+    function hillClimbing(point, step, random) {
+      let current = [...point];
+      let currentFitness = rastrigin(current);
+      for (let i = 0; i < 12; i++) {
+        const candidate = [
+          Math.max(-BOUNDS, Math.min(BOUNDS, current[0] + (random() * 2 - 1) * step)),
+          Math.max(-BOUNDS, Math.min(BOUNDS, current[1] + (random() * 2 - 1) * step))
+        ];
+        const fitness = rastrigin(candidate);
+        if (fitness < currentFitness) {
+          current = candidate;
+          currentFitness = fitness;
+        }
+      }
+      return current;
+    }
+
+    function initialize(size, seed) {
+      const random = seededRandom(seed);
+      const population = [];
+      for (let i = 0; i < size; i++) {
+        const point = randomPoint(random);
+        population.push({ point, velocity: [0, 0], best: [...point], stagnation: 0 });
+      }
+      return { population, random };
+    }
+
+    function updateDA(population, random) {
+      const center = [0, 0];
+      population.forEach(p => {
+        center[0] += p.point[0] / population.length;
+        center[1] += p.point[1] / population.length;
+      });
+      let globalBest = population[0].point;
+      population.forEach(p => {
+        if (rastrigin(p.best) < rastrigin(globalBest)) globalBest = p.best;
+      });
+
+      population.forEach(p => {
+        const separation = [0, 0];
+        population.forEach(q => {
+          if (q !== p) {
+            const dx = p.point[0] - q.point[0];
+            const dy = p.point[1] - q.point[1];
+            if (dx * dx + dy * dy < 1) {
+              separation[0] -= dx * 0.02;
+              separation[1] -= dy * 0.02;
+            }
+          }
+        });
+        p.velocity[0] = p.velocity[0] * 0.72
+          + (center[0] - p.point[0]) * 0.018
+          + (globalBest[0] - p.point[0]) * 0.025
+          + separation[0] + (random() - 0.5) * 0.28;
+        p.velocity[1] = p.velocity[1] * 0.72
+          + (center[1] - p.point[1]) * 0.018
+          + (globalBest[1] - p.point[1]) * 0.025
+          + separation[1] + (random() - 0.5) * 0.28;
+        p.point[0] = Math.max(-BOUNDS, Math.min(BOUNDS, p.point[0] + p.velocity[0]));
+        p.point[1] = Math.max(-BOUNDS, Math.min(BOUNDS, p.point[1] + p.velocity[1]));
+        if (rastrigin(p.point) < rastrigin(p.best)) {
+          p.best = [...p.point];
+          p.stagnation = 0;
+        } else {
+          p.stagnation++;
+        }
+      });
+    }
+
+    function updateDBO(population, random) {
+      let best = population[0].point;
+      population.forEach(p => {
+        if (rastrigin(p.best) < rastrigin(best)) best = p.best;
+      });
+      population.forEach(p => {
+        const attraction = (random() * 2 - 1) * 0.12;
+        p.velocity[0] = p.velocity[0] * 0.2 + (best[0] - p.point[0]) * 0.025 + attraction;
+        p.velocity[1] = p.velocity[1] * 0.2 + (best[1] - p.point[1]) * 0.025 + (random() * 2 - 1) * 0.12;
+        p.point[0] = Math.max(-BOUNDS, Math.min(BOUNDS, p.point[0] + p.velocity[0]));
+        p.point[1] = Math.max(-BOUNDS, Math.min(BOUNDS, p.point[1] + p.velocity[1]));
+        if (rastrigin(p.point) < rastrigin(p.best)) {
+          p.best = [...p.point];
+          p.stagnation = 0;
+        } else {
+          p.stagnation++;
+        }
+      });
+    }
+
+    function getBest(population) {
+      return population.reduce((best, p) => rastrigin(p.point) < rastrigin(best.point) ? p : best, population[0]);
+    }
+
+    function runOptimization(mode, hybrid) {
+      const size = Number(controls.population.value);
+      const iterations = Number(controls.iterations.value);
+      const hcStep = Number(controls.step.value);
+      const hcInterval = Number(controls.interval.value);
+      const seed = 2026 + size * 10 + iterations;
+      const { population, random } = initialize(size, seed);
+      const snapshots = [];
+      const fitnessHistory = [];
+
+      for (let iteration = 0; iteration < iterations; iteration++) {
+        if (mode === 'DA') updateDA(population, random);
+        else updateDBO(population, random);
+
+        let hcApplied = new Set();
+        if (hybrid && iteration % hcInterval === 0) {
+          if (mode === 'DA') {
+            population.forEach((p, i) => {
+              const neighbors = population.filter(q => q !== p &&
+                (p.point[0] - q.point[0]) ** 2 + (p.point[1] - q.point[1]) ** 2 < 1.2 ** 2
+              ).length;
+              if (neighbors > 0) {
+                p.point = hillClimbing(p.point, hcStep, random);
+                p.point = p.point.map(v => Math.max(-BOUNDS, Math.min(BOUNDS, v)));
+                p.best = rastrigin(p.point) < rastrigin(p.best) ? [...p.point] : p.best;
+                hcApplied.add(i);
+              }
+            });
+          } else {
+            population.forEach((p, i) => {
+              if (p.stagnation >= 3) {
+                p.point = hillClimbing(p.point, hcStep, random);
+                p.point = p.point.map(v => Math.max(-BOUNDS, Math.min(BOUNDS, v)));
+                p.best = rastrigin(p.point) < rastrigin(p.best) ? [...p.point] : p.best;
+                p.stagnation = 0;
+                hcApplied.add(i);
+              }
+            });
+          }
+        }
+
+        const best = getBest(population);
+        fitnessHistory.push(rastrigin(best.point));
+        if (iteration % 3 === 0 || iteration === iterations - 1) {
+          snapshots.push(population.map((p, i) => ({
+            point: [...p.point],
+            role: hcApplied.has(i) ? 'hc' : (p === best ? 'best' : 'normal')
+          })));
+        }
+      }
+      return { snapshots, fitnessHistory, best: getBest(population).point };
+    }
+
+    function drawCanvas(canvas, snapshot, finalFitnessLabel) {
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * devicePixelRatio;
+      canvas.height = rect.height * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      const width = rect.width;
+      const height = rect.height;
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = '#edf2f7';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const x = i * width / 10;
+        const y = i * height / 10;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+      }
+
+      snapshot.forEach(particle => {
+        const x = (particle.point[0] + BOUNDS) / (2 * BOUNDS) * width;
+        const y = (BOUNDS - particle.point[1]) / (2 * BOUNDS) * height;
+        ctx.beginPath();
+        ctx.arc(x, y, particle.role === 'best' ? 7 : particle.role === 'hc' ? 6 : 4, 0, 2 * Math.PI);
+        ctx.fillStyle = particle.role === 'best' ? '#10b981' : particle.role === 'hc' ? '#f59e0b' : '#2563eb';
+        ctx.fill();
+      });
+    }
+
+    function drawBenchmark(histories) {
+      const ctx = benchmarkCanvas.getContext('2d');
+      const rect = benchmarkCanvas.getBoundingClientRect();
+      benchmarkCanvas.width = rect.width * devicePixelRatio;
+      benchmarkCanvas.height = rect.height * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      const width = rect.width;
+      const height = rect.height;
+      ctx.clearRect(0, 0, width, height);
+
+      const colors = ['#94a3b8', '#2563eb', '#f59e0b'];
+      const allValues = histories.flatMap(h => h.history);
+      const maxValue = Math.max(...allValues, 1);
+      const minValue = Math.min(...allValues, 0);
+      const range = Math.max(maxValue - minValue, 1);
+
+      histories.forEach((series, s) => {
+        ctx.beginPath();
+        ctx.strokeStyle = colors[s];
+        ctx.lineWidth = s === 0 ? 1.5 : 2.5;
+        series.history.forEach((value, i) => {
+          const x = i / Math.max(series.history.length - 1, 1) * width;
+          const y = height - 8 - ((value - minValue) / range) * (height - 16);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+
+      ctx.font = '11px Segoe UI';
+      histories.forEach((series, i) => {
+        ctx.fillStyle = colors[i];
+        ctx.fillRect(10 + i * 150, 8, 10, 10);
+        ctx.fillStyle = '#334155';
+        ctx.fillText(`${series.name}: ${series.history.at(-1).toFixed(3)}`, 24 + i * 150, 17);
+      });
+    }
+
+    function animateResult(base, hybrid, label) {
+      const frames = Math.max(base.snapshots.length, hybrid.snapshots.length);
+      let frame = 0;
+      function tick() {
+        const bIndex = Math.min(frame, base.snapshots.length - 1);
+        const hIndex = Math.min(frame, hybrid.snapshots.length - 1);
+        drawCanvas(baseCanvas, base.snapshots[bIndex]);
+        drawCanvas(hybridCanvas, hybrid.snapshots[hIndex]);
+        document.getElementById('baseFitness').textContent = `Terbaik ${base.fitnessHistory[Math.min(frame * 3, base.fitnessHistory.length - 1)].toFixed(3)}`;
+        document.getElementById('hybridFitness').textContent = `Terbaik ${hybrid.fitnessHistory[Math.min(frame * 3, hybrid.fitnessHistory.length - 1)].toFixed(3)}`;
+        frame++;
+        if (frame < frames) requestAnimationFrame(tick);
+        else {
+          statusEl.innerHTML = `<strong>${label} selesai</strong><br>
+            Tanpa HC: ${base.fitnessHistory.at(-1).toFixed(4)}<br>
+            Dengan HC: ${hybrid.fitnessHistory.at(-1).toFixed(4)}`;
+        }
+      }
+      tick();
+    }
+
+    function runOne(mode) {
+      statusEl.textContent = `Menjalankan ${mode}...`;
+      const base = runOptimization(mode, false);
+      const hybrid = runOptimization(mode, true);
+      animateResult(base, hybrid, mode);
+      drawBenchmark([
+        { name: 'Selesai', history: base.fitnessHistory },
+        { name: `${mode} tanpa HC`, history: base.fitnessHistory },
+        { name: `${mode} dengan HC`, history: hybrid.fitnessHistory }
+      ]);
+    }
+
+    function compareAll() {
+      statusEl.textContent = 'Menjalankan DA dan DBO...';
+      const daBase = runOptimization('DA', false);
+      const daHybrid = runOptimization('DA', true);
+      const dboBase = runOptimization('DBO', false);
+      const dboHybrid = runOptimization('DBO', true);
+      animateResult(daBase, daHybrid, 'Perbandingan DA');
+      drawBenchmark([
+        { name: 'DA', history: daBase.fitnessHistory },
+        { name: 'HC-DA', history: daHybrid.fitnessHistory },
+        { name: 'HC-DBO', history: dboHybrid.fitnessHistory }
+      ]);
+      setTimeout(() => {
+        statusEl.innerHTML = `<strong>Ringkasan hasil simulasi</strong><br>
+          DA: ${daBase.fitnessHistory.at(-1).toFixed(4)} → HC-DA: ${daHybrid.fitnessHistory.at(-1).toFixed(4)}<br>
+          DBO: ${dboBase.fitnessHistory.at(-1).toFixed(4)} → HC-DBO: ${dboHybrid.fitnessHistory.at(-1).toFixed(4)}`;
+      }, 400);
+    }
+
+    document.getElementById('runDA').addEventListener('click', () => runOne('DA'));
+    document.getElementById('runDBO').addEventListener('click', () => runOne('DBO'));
+    document.getElementById('compare').addEventListener('click', compareAll);
+  </script>
+</body>
+</html>
