@@ -276,7 +276,7 @@ layout: default
 
 # Demo Interaktif
 
-<iframe src="/hc-demo.html" style="width:100%; height:440px; border:1px solid rgba(148,163,184,.45); border-radius:14px;"></iframe>
+<iframe src="./hc-demo.html" style="width:100%; height:440px; border:1px solid rgba(148,163,184,.45); border-radius:14px;"></iframe>
 
 ---
 layout: section
